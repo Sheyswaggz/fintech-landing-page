@@ -1,0 +1,437 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ==========================================================================
+  # Deploy to Development Environment
+  # ==========================================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
+    
+    environment:
+      name: development
+      url: https://dev.fintech.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl for development
+        run: |
+          echo "${{ secrets.KUBECONFIG_DEV }}" | base64 -d > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+          kubectl config view --minify
+          kubectl cluster-info
+      
+      - name: Update deployment image
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Deploying image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          kubectl set image deployment/fintech-landing-deployment \
+            fintech-landing=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --namespace=development \
+            --record
+          
+          kubectl annotate deployment/fintech-landing-deployment \
+            kubernetes.io/change-cause="Deploy commit ${{ github.sha }} by ${{ github.actor }}" \
+            --namespace=development \
+            --overwrite
+      
+      - name: Wait for rollout to complete
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Waiting for deployment rollout..."
+          kubectl rollout status deployment/fintech-landing-deployment \
+            --namespace=development \
+            --timeout=5m
+      
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "=== Deployment Status ==="
+          kubectl get deployment fintech-landing-deployment --namespace=development
+          
+          echo "=== Pod Status ==="
+          kubectl get pods --namespace=development -l app=fintech-landing
+          
+          echo "=== Service Status ==="
+          kubectl get svc --namespace=development -l app=fintech-landing
+          
+          echo "=== Recent Events ==="
+          kubectl get events --namespace=development --sort-by='.lastTimestamp' | tail -10
+      
+      - name: Run health check
+        run: |
+          echo "Running health checks..."
+          
+          for i in {1..30}; do
+            if curl -f -s -o /dev/null -w "%{http_code}" https://dev.fintech.example.com/health | grep -q "200"; then
+              echo "✓ Health check passed"
+              exit 0
+            fi
+            echo "Attempt $i: Waiting for service to be healthy..."
+            sleep 10
+          done
+          
+          echo "✗ Health check failed after 30 attempts"
+          exit 1
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Deployment failed, initiating rollback..."
+          kubectl rollout undo deployment/fintech-landing-deployment --namespace=development
+          
+          echo "Waiting for rollback to complete..."
+          kubectl rollout status deployment/fintech-landing-deployment --namespace=development --timeout=5m
+          
+          echo "Rollback completed"
+      
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f kubeconfig
+  
+  # ==========================================================================
+  # Deploy to Staging Environment
+  # ==========================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    
+    environment:
+      name: staging
+      url: https://staging.fintech.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl for staging
+        run: |
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+          kubectl config view --minify
+          kubectl cluster-info
+      
+      - name: Update deployment image
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Deploying image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          kubectl set image deployment/fintech-landing-deployment \
+            fintech-landing=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --namespace=staging \
+            --record
+          
+          kubectl annotate deployment/fintech-landing-deployment \
+            kubernetes.io/change-cause="Deploy commit ${{ github.sha }} by ${{ github.actor }}" \
+            --namespace=staging \
+            --overwrite
+      
+      - name: Wait for rollout to complete
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Waiting for deployment rollout..."
+          kubectl rollout status deployment/fintech-landing-deployment \
+            --namespace=staging \
+            --timeout=5m
+      
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "=== Deployment Status ==="
+          kubectl get deployment fintech-landing-deployment --namespace=staging
+          
+          echo "=== Pod Status ==="
+          kubectl get pods --namespace=staging -l app=fintech-landing
+          
+          echo "=== Service Status ==="
+          kubectl get svc --namespace=staging -l app=fintech-landing
+      
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against staging environment..."
+          
+          # Test homepage
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.fintech.example.com)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "✗ Homepage test failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✓ Homepage test passed"
+          
+          # Test health endpoint
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.fintech.example.com/health)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "✗ Health endpoint test failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✓ Health endpoint test passed"
+          
+          # Test static assets
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.fintech.example.com/styles.min.css)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "✗ CSS asset test failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✓ CSS asset test passed"
+          
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://staging.fintech.example.com/script.min.js)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "✗ JS asset test failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✓ JS asset test passed"
+          
+          echo "All smoke tests passed successfully"
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Deployment or tests failed, initiating rollback..."
+          kubectl rollout undo deployment/fintech-landing-deployment --namespace=staging
+          
+          echo "Waiting for rollback to complete..."
+          kubectl rollout status deployment/fintech-landing-deployment --namespace=staging --timeout=5m
+          
+          echo "Rollback completed"
+      
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f kubeconfig
+  
+  # ==========================================================================
+  # Deploy to Production Environment (Requires Manual Approval)
+  # ==========================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    
+    environment:
+      name: production
+      url: https://fintech.example.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl for production
+        run: |
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+          kubectl config view --minify
+          kubectl cluster-info
+      
+      - name: Pre-deployment backup
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Creating pre-deployment backup..."
+          kubectl get deployment fintech-landing-deployment --namespace=production -o yaml > deployment-backup.yaml
+          
+          echo "Current deployment state saved"
+      
+      - name: Update deployment image
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Deploying image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          kubectl set image deployment/fintech-landing-deployment \
+            fintech-landing=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --namespace=production \
+            --record
+          
+          kubectl annotate deployment/fintech-landing-deployment \
+            kubernetes.io/change-cause="Production deploy commit ${{ github.sha }} by ${{ github.actor }}" \
+            --namespace=production \
+            --overwrite
+      
+      - name: Wait for rollout to complete
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Waiting for production deployment rollout..."
+          kubectl rollout status deployment/fintech-landing-deployment \
+            --namespace=production \
+            --timeout=10m
+      
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "=== Deployment Status ==="
+          kubectl get deployment fintech-landing-deployment --namespace=production
+          
+          echo "=== Pod Status ==="
+          kubectl get pods --namespace=production -l app=fintech-landing
+          
+          echo "=== Service Status ==="
+          kubectl get svc --namespace=production -l app=fintech-landing
+          
+          echo "=== Ingress Status ==="
+          kubectl get ingress --namespace=production
+      
+      - name: Run production health checks
+        run: |
+          echo "Running comprehensive production health checks..."
+          
+          # Wait for DNS propagation and service stabilization
+          sleep 30
+          
+          # Test homepage with retries
+          for i in {1..10}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://fintech.example.com)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Homepage health check passed (attempt $i)"
+              break
+            fi
+            
+            if [ $i -eq 10 ]; then
+              echo "✗ Homepage health check failed after 10 attempts with HTTP $HTTP_CODE"
+              exit 1
+            fi
+            
+            echo "Attempt $i: HTTP $HTTP_CODE, retrying in 10 seconds..."
+            sleep 10
+          done
+          
+          # Test health endpoint
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://fintech.example.com/health)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "✗ Health endpoint check failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          echo "✓ Health endpoint check passed"
+          
+          # Test response time
+          RESPONSE_TIME=$(curl -s -o /dev/null -w "%{time_total}" https://fintech.example.com)
+          echo "Response time: ${RESPONSE_TIME}s"
+          
+          # Verify content
+          CONTENT=$(curl -s https://fintech.example.com)
+          if ! echo "$CONTENT" | grep -q "<!DOCTYPE html>"; then
+            echo "✗ Content validation failed"
+            exit 1
+          fi
+          echo "✓ Content validation passed"
+          
+          echo "All production health checks passed successfully"
+      
+      - name: Monitor deployment stability
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Monitoring deployment stability for 2 minutes..."
+          
+          for i in {1..12}; do
+            # Check pod status
+            READY_PODS=$(kubectl get pods --namespace=production -l app=fintech-landing -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -o "True" | wc -l)
+            TOTAL_PODS=$(kubectl get pods --namespace=production -l app=fintech-landing --no-headers | wc -l)
+            
+            echo "Check $i/12: $READY_PODS/$TOTAL_PODS pods ready"
+            
+            if [ "$READY_PODS" != "$TOTAL_PODS" ]; then
+              echo "✗ Not all pods are ready"
+              exit 1
+            fi
+            
+            # Check service availability
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://fintech.example.com/health)
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "✗ Service health check failed with HTTP $HTTP_CODE"
+              exit 1
+            fi
+            
+            sleep 10
+          done
+          
+          echo "✓ Deployment is stable"
+      
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=$(pwd)/kubeconfig
+          
+          echo "Production deployment failed, initiating emergency rollback..."
+          kubectl rollout undo deployment/fintech-landing-deployment --namespace=production
+          
+          echo "Waiting for rollback to complete..."
+          kubectl rollout status deployment/fintech-landing-deployment --namespace=production --timeout=10m
+          
+          echo "Verifying rollback..."
+          for i in {1..5}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://fintech.example.com/health)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Service restored after rollback"
+              break
+            fi
+            echo "Attempt $i: Waiting for service restoration..."
+            sleep 10
+          done
+          
+          echo "Emergency rollback completed"
+      
+      - name: Create deployment tag
+        if: success()
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          TAG_NAME="production-$(date +%Y%m%d-%H%M%S)"
+          git tag -a "$TAG_NAME" -m "Production deployment: ${{ github.sha }}"
+          git push origin "$TAG_NAME" || echo "Tag push failed (non-critical)"
+      
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f kubeconfig deployment-backup.yaml

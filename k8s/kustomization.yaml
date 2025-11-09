@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Kustomization configuration for fintech landing page Kubernetes manifests
+# This base configuration includes all core resources for the application
+# For environment-specific configurations (dev/staging/prod), create overlays in:
+#   - overlays/dev/
+#   - overlays/staging/
+#   - overlays/production/
+
+namespace: production
+
+commonLabels:
+  app: fintech-landing
+  managed-by: kustomize
+  component: frontend
+  tier: web
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+commonAnnotations:
+  description: "Fintech landing page Kubernetes resources"
+  version: "1.0.0"

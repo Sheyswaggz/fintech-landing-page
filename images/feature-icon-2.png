@@ -1,0 +1,5 @@
+convert -size 128x128 xc:none -gravity center \
+  -fill "#4F46E5" -draw "circle 64,64 64,20" \
+  -fill "white" -draw "path 'M 50,50 L 64,70 L 78,45'" \
+  -quality 95 -define png:compression-level=9 \
+  images/feature-icon-2.png

@@ -7,6 +7,8 @@
  * - Form validation with real-time feedback
  * - Basic analytics tracking via localStorage
  * - Progressive enhancement support
+ * - Lazy loading with Intersection Observer fallback
+ * - Performance monitoring and Web Vitals tracking
  * 
  * @generated-from: task-id:TASK-003
  * @modifies: index.html
@@ -47,6 +49,9 @@
       initMobileMenu();
       initFormValidation();
       initAnalytics();
+      initLazyLoading();
+      initPerformanceMonitoring();
+      initWebVitals();
       
       // Log successful initialization
       logEvent('page_view', { timestamp: Date.now() });
@@ -505,6 +510,145 @@
       localStorage.setItem(CONFIG.ANALYTICS_KEY, JSON.stringify(data));
     } catch (error) {
       console.error('Analytics save error:', error);
+    }
+  }
+
+  /**
+   * Initialize lazy loading for images
+   * Fallback for browsers that don't support loading="lazy"
+   */
+  function initLazyLoading() {
+    // Check if browser supports native lazy loading
+    if ('loading' in HTMLImageElement.prototype) {
+      // Native lazy loading is supported, no need for fallback
+      return;
+    }
+
+    // Fallback: Use Intersection Observer for lazy loading
+    if (!('IntersectionObserver' in window)) {
+      // Browser doesn't support Intersection Observer, load all images immediately
+      const images = document.querySelectorAll('img[data-src]');
+      images.forEach(img => {
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+        }
+      });
+      return;
+    }
+
+    // Implement Intersection Observer for lazy loading
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          if (img.dataset.src) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+            imageObserver.unobserve(img);
+            logEvent('image_lazy_loaded', { src: img.src });
+          }
+        }
+      });
+    }, {
+      rootMargin: '50px 0px',
+      threshold: 0.01
+    });
+
+    // Observe all images with data-src attribute
+    const lazyImages = document.querySelectorAll('img[data-src]');
+    lazyImages.forEach(img => imageObserver.observe(img));
+  }
+
+  /**
+   * Initialize performance monitoring
+   * Track page load metrics using Navigation Timing API
+   */
+  function initPerformanceMonitoring() {
+    // Wait for page to fully load
+    window.addEventListener('load', () => {
+      // Check if Performance API is available
+      if (!('performance' in window) || !performance.getEntriesByType) {
+        return;
+      }
+
+      try {
+        const perfData = performance.getEntriesByType('navigation')[0];
+        
+        if (perfData) {
+          const pageLoadTime = perfData.loadEventEnd - perfData.fetchStart;
+          const domContentLoaded = perfData.domContentLoadedEventEnd - perfData.fetchStart;
+          
+          console.log('Page Load Time:', pageLoadTime, 'ms');
+          console.log('DOM Content Loaded:', domContentLoaded, 'ms');
+          
+          // Log performance metrics to analytics
+          logEvent('performance_metrics', {
+            pageLoadTime: pageLoadTime,
+            domContentLoaded: domContentLoaded,
+            timestamp: Date.now()
+          });
+        }
+      } catch (error) {
+        console.error('Performance monitoring error:', error);
+      }
+    });
+  }
+
+  /**
+   * Initialize Web Vitals tracking
+   * Track FCP, LCP, and other paint metrics
+   */
+  function initWebVitals() {
+    // Check if PerformanceObserver is available
+    if (!('PerformanceObserver' in window)) {
+      return;
+    }
+
+    try {
+      // Track paint metrics (FCP - First Contentful Paint)
+      const paintObserver = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          console.log(entry.name, entry.startTime);
+          logEvent('web_vital_paint', {
+            name: entry.name,
+            startTime: entry.startTime,
+            timestamp: Date.now()
+          });
+        });
+      });
+      paintObserver.observe({ entryTypes: ['paint'] });
+
+      // Track LCP (Largest Contentful Paint)
+      const lcpObserver = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const lastEntry = entries[entries.length - 1];
+        console.log('Largest Contentful Paint:', lastEntry.startTime);
+        logEvent('web_vital_lcp', {
+          startTime: lastEntry.startTime,
+          size: lastEntry.size,
+          timestamp: Date.now()
+        });
+      });
+      lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] });
+
+      // Track CLS (Cumulative Layout Shift)
+      let clsScore = 0;
+      const clsObserver = new PerformanceObserver((list) => {
+        list.getEntries().forEach((entry) => {
+          if (!entry.hadRecentInput) {
+            clsScore += entry.value;
+            console.log('Cumulative Layout Shift:', clsScore);
+            logEvent('web_vital_cls', {
+              score: clsScore,
+              timestamp: Date.now()
+            });
+          }
+        });
+      });
+      clsObserver.observe({ entryTypes: ['layout-shift'] });
+
+    } catch (error) {
+      console.error('Web Vitals tracking error:', error);
     }
   }
 

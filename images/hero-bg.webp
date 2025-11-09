@@ -1,0 +1,1 @@
+cwebp -q 82 -resize 1920 1080 input-image.jpg -o images/hero-bg.webp

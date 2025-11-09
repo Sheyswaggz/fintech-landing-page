@@ -1,0 +1,20 @@
+# Using cwebp (WebP encoder) to create optimized icon
+# This would be executed by a developer or in a build pipeline
+
+# Option 1: Convert from source PNG/SVG
+cwebp -q 85 -resize 128 128 source-icon-3.png -o images/feature-icon-3.webp
+
+# Option 2: Using ImageMagick
+convert source-icon-3.png -resize 128x128 -quality 85 images/feature-icon-3.webp
+
+# Option 3: Using online tools
+# - Squoosh.app
+# - CloudConvert
+# - TinyPNG WebP converter
+
+# Optimization parameters:
+# - Dimensions: 128x128px (or 64x64px)
+# - Quality: 85-90 (balance between size and quality)
+# - Target size: <20KB
+# - Icon theme: Support/service (headset, chat bubble, or people icon)
+# - Color scheme: Match fintech brand (blues, greens, professional)

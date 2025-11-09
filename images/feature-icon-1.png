@@ -1,0 +1,11 @@
+# If you have the WebP version, convert it to PNG:
+dwebp images/feature-icon-1.webp -o images/feature-icon-1.png
+
+# Then optimize the PNG to meet the <30KB requirement:
+pngquant --quality=65-80 --speed 1 images/feature-icon-1.png --output images/feature-icon-1.png --force
+
+# Or use ImageMagick:
+convert images/feature-icon-1.webp -resize 128x128 -quality 85 images/feature-icon-1.png
+
+# Optimize with optipng:
+optipng -o7 images/feature-icon-1.png

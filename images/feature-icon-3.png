@@ -1,0 +1,13 @@
+# Using ImageMagick to convert from WebP to PNG
+convert images/feature-icon-3.webp -quality 90 images/feature-icon-3.png
+
+# Or using cwebp/dwebp tools
+dwebp images/feature-icon-3.webp -o images/feature-icon-3.png
+
+# Then optimize the PNG
+optipng -o7 images/feature-icon-3.png
+# or
+pngquant --quality=85-95 images/feature-icon-3.png --output images/feature-icon-3.png
+
+# Verify file size
+ls -lh images/feature-icon-3.png

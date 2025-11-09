@@ -1,0 +1,1 @@
+cwebp -q 80 -resize 128 128 source-icon.png -o images/feature-icon-2.webp

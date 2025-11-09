@@ -231,6 +231,76 @@ img {
 }
 
 /* ============================================
+   MOBILE MENU TOGGLE
+   ============================================ */
+
+.menu-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 30px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 60;
+}
+
+.menu-toggle span {
+  width: 30px;
+  height: 3px;
+  background-color: var(--text-color);
+  border-radius: 2px;
+  transition: all var(--transition-speed) var(--transition-timing);
+  transform-origin: center;
+}
+
+.menu-toggle.active span:nth-child(1) {
+  transform: translateY(10.5px) rotate(45deg);
+}
+
+.menu-toggle.active span:nth-child(2) {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.menu-toggle.active span:nth-child(3) {
+  transform: translateY(-10.5px) rotate(-45deg);
+}
+
+@media (max-width: 767px) {
+  .menu-toggle {
+    display: flex;
+  }
+
+  .header__menu {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 70%;
+    max-width: 300px;
+    height: 100vh;
+    background-color: var(--bg-color);
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--space-3xl) var(--space-lg);
+    box-shadow: var(--shadow-xl);
+    transition: right var(--transition-speed) var(--transition-timing);
+    gap: var(--space-md);
+  }
+
+  .header__menu.active {
+    right: 0;
+  }
+
+  .header__menu-link {
+    width: 100%;
+    padding: var(--space-md);
+  }
+}
+
+/* ============================================
    HERO SECTION
    ============================================ */
 
@@ -589,6 +659,10 @@ img {
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
 
+.cta__form-input.form-error {
+  border-color: #dc2626;
+}
+
 .cta__form-hint {
   display: block;
   font-size: var(--font-size-sm);
@@ -643,10 +717,36 @@ img {
   transform: translateY(0);
 }
 
+.cta__form-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .cta__form-footer {
   text-align: center;
   margin-top: var(--space-lg);
   color: var(--text-light);
+}
+
+/* ============================================
+   FORM VALIDATION STATES
+   ============================================ */
+
+.form-error {
+  display: block;
+  color: #dc2626;
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-xs);
+}
+
+.form-success {
+  color: #16a34a;
+  padding: var(--space-md);
+  background: #dcfce7;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-lg);
+  font-weight: 500;
 }
 
 /* ============================================

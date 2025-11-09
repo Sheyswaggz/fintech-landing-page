@@ -1,5 +1,8 @@
 # Fintech Landing Page
 
+![CI Pipeline](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)
+![Deploy](https://github.com/OWNER/REPO/actions/workflows/deploy.yml/badge.svg)
+
 A high-performance, containerized landing page for fintech services built with modern web technologies and optimized for production deployment.
 
 ## Features
@@ -9,6 +12,7 @@ A high-performance, containerized landing page for fintech services built with m
 - **Containerized**: Docker-based deployment for consistency across all environments
 - **Production-Ready**: Security hardened with non-root user and health checks
 - **Lightweight**: Optimized Docker image <50MB using nginx:alpine
+- **Automated CI/CD**: Continuous integration and deployment with GitHub Actions
 
 ## Prerequisites
 

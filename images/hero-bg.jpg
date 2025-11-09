@@ -1,0 +1,10 @@
+# Using ImageMagick
+   convert input-image.jpg -resize 1920x1080 -quality 78 -strip images/hero-bg.jpg
+   
+   # Using cjpeg (from libjpeg)
+   cjpeg -quality 78 -optimize -progressive input-image.jpg > images/hero-bg.jpg
+   
+   # Using online tools
+   # - TinyJPG (https://tinyjpg.com)
+   # - Squoosh (https://squoosh.app)
+   # - ImageOptim

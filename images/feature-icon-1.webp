@@ -1,0 +1,5 @@
+# If you have a PNG/JPG source icon:
+cwebp -q 80 -resize 128 128 source-icon.png -o feature-icon-1.webp
+
+# Or use ImageMagick:
+convert source-icon.png -resize 128x128 -quality 80 feature-icon-1.webp

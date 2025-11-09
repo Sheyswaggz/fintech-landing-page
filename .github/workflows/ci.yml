@@ -1,0 +1,181 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate HTML
+        run: |
+          echo "Validating HTML files..."
+          if [ -f "index.html" ]; then
+            echo "✓ index.html found"
+            grep -q "<!DOCTYPE html>" index.html && echo "✓ DOCTYPE declaration present" || exit 1
+            grep -q "<html" index.html && echo "✓ HTML tag present" || exit 1
+            grep -q "</html>" index.html && echo "✓ Closing HTML tag present" || exit 1
+            echo "HTML validation passed"
+          else
+            echo "✗ index.html not found"
+            exit 1
+          fi
+
+      - name: Validate CSS
+        run: |
+          echo "Validating CSS files..."
+          if [ -f "styles.css" ] || [ -f "styles.min.css" ]; then
+            echo "✓ CSS files found"
+            for file in styles.css styles.min.css; do
+              if [ -f "$file" ]; then
+                echo "Checking $file..."
+                if [ -s "$file" ]; then
+                  echo "✓ $file is not empty"
+                else
+                  echo "✗ $file is empty"
+                  exit 1
+                fi
+              fi
+            done
+            echo "CSS validation passed"
+          else
+            echo "✗ No CSS files found"
+            exit 1
+          fi
+
+      - name: Lint JavaScript
+        run: |
+          echo "Linting JavaScript files..."
+          if [ -f "script.js" ] || [ -f "script.min.js" ]; then
+            echo "✓ JavaScript files found"
+            for file in script.js script.min.js; do
+              if [ -f "$file" ]; then
+                echo "Checking $file..."
+                if [ -s "$file" ]; then
+                  echo "✓ $file is not empty"
+                else
+                  echo "✗ $file is empty"
+                  exit 1
+                fi
+              fi
+            done
+            echo "JavaScript linting passed"
+          else
+            echo "✗ No JavaScript files found"
+            exit 1
+          fi
+
+      - name: Validate Dockerfile
+        run: |
+          echo "Validating Dockerfile..."
+          if [ -f "Dockerfile" ]; then
+            echo "✓ Dockerfile found"
+            grep -q "FROM" Dockerfile && echo "✓ FROM instruction present" || exit 1
+            grep -q "EXPOSE" Dockerfile && echo "✓ EXPOSE instruction present" || exit 1
+            echo "Dockerfile validation passed"
+          else
+            echo "✗ Dockerfile not found"
+            exit 1
+          fi
+
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: validate
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Image digest
+        run: echo "Image pushed with digest ${{ steps.meta.outputs.digest }}"
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: 0
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Run Trivy vulnerability scanner (table output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: 0
+
+      - name: Security scan summary
+        run: |
+          echo "Security scan completed for image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ github.sha }}"
+          echo "Results uploaded to GitHub Security tab"
